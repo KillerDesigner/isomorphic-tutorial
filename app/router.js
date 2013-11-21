@@ -14,8 +14,6 @@ module.exports = Router;
 function Router(routesFn) {
   if (routesFn == null) throw new Error("Must provide routes.");
 
-  this.bootstrappedData = {};
-
   this.directorRouter = new DirectorRouter(this.parseRoutes(routesFn));
 }
 
@@ -48,7 +46,7 @@ Router.prototype.getRouteHandler = function(handler) {
      */
     if (!isServer && firstRender) {
       firstRender = false;
-      router.initClientView(router.bootstrappedData.viewPath);
+      router.initClientView(router.bootstrap.viewPath);
       return;
     }
 
@@ -136,14 +134,12 @@ Router.prototype.initClientView = function(viewPath) {
 };
 
 Router.prototype.handleServerRoute = function(viewPath, html, req, res) {
-  var bootstrappedData = {
-    // Send `viewPath` to client for bootstrapping.
-    viewPath: viewPath,
-  };
+  // Send `viewPath` to client for bootstrapping.
+  res.locals.bootstrap = viewPath;
 
   var locals = {
     body: html,
-    bootstrappedData: JSON.stringify(bootstrappedData),
+    bootstrap: JSON.stringify(res.locals.bootstrap),
   };
 
   this.wrapWithLayout(locals, function(err, layoutHtml) {
@@ -158,6 +154,10 @@ Router.prototype.middleware = function() {
   var directorRouter = this.directorRouter;
 
   return function middleware(req, res, next) {
+    // Initialize `res.locals.bootstrap`, used for bootstrapping
+    // data onto client.
+    res.locals.bootstrap = res.locals.bootstrap || {};
+
     // Attach `this.next` to route handler, for better handling of errors.
     directorRouter.attach(function() {
       this.next = next;
@@ -176,8 +176,8 @@ Router.prototype.middleware = function() {
 /**
  * Client-side handler to start router.
  */
-Router.prototype.start = function(bootstrappedData) {
-  this.bootstrappedData = bootstrappedData;
+Router.prototype.start = function(bootstrap) {
+  this.bootstrap = bootstrap || {};
 
   /**
    * Tell Director to use HTML5 History API (pushState).
