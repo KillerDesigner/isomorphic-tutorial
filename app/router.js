@@ -14,6 +14,8 @@ module.exports = Router;
 function Router(routesFn) {
   if (routesFn == null) throw new Error("Must provide routes.");
 
+  this.bootstrappedData = {};
+
   this.directorRouter = new DirectorRouter(this.parseRoutes(routesFn));
 }
 
@@ -46,6 +48,7 @@ Router.prototype.getRouteHandler = function(handler) {
      */
     if (!isServer && firstRender) {
       firstRender = false;
+      router.initClientView(router.bootstrappedData.viewPath);
       return;
     }
 
@@ -66,9 +69,9 @@ Router.prototype.getRouteHandler = function(handler) {
           if (err) return handleErr(err);
 
           if (isServer) {
-            router.handleServerRoute(html, routeContext.req, routeContext.res);
+            router.handleServerRoute(viewPath, html, routeContext.req, routeContext.res);
           } else {
-            router.handleClientRoute(html);
+            router.handleClientRoute(viewPath, html);
           }
         });
       }));
@@ -115,13 +118,32 @@ Router.prototype.wrapWithLayout = function(locals, callback) {
   }
 };
 
-Router.prototype.handleClientRoute = function(html) {
+Router.prototype.handleClientRoute = function(viewPath, html) {
   document.getElementById('view-container').innerHTML = html;
+
+  this.initClientView(viewPath);
 };
 
-Router.prototype.handleServerRoute = function(html, req, res) {
+Router.prototype.initClientView = function(viewPath) {
+  // Try to find an associated client-side JS file.
+  try {
+    var View = require(viewsDir + '/' + viewPath + '.js');
+  } catch (e) {}
+
+  if (View) {
+    this.currentView = new View({router: this});
+  }
+};
+
+Router.prototype.handleServerRoute = function(viewPath, html, req, res) {
+  var bootstrappedData = {
+    // Send `viewPath` to client for bootstrapping.
+    viewPath: viewPath,
+  };
+
   var locals = {
     body: html,
+    bootstrappedData: JSON.stringify(bootstrappedData),
   };
 
   this.wrapWithLayout(locals, function(err, layoutHtml) {
@@ -154,7 +176,9 @@ Router.prototype.middleware = function() {
 /**
  * Client-side handler to start router.
  */
-Router.prototype.start = function() {
+Router.prototype.start = function(bootstrappedData) {
+  this.bootstrappedData = bootstrappedData;
+
   /**
    * Tell Director to use HTML5 History API (pushState).
    */
